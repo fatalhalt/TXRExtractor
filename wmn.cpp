@@ -266,6 +266,9 @@ int wmn_extract(FILE *fd_archive, FILE *fd_toc) {
 	char **filenames;
 	int i, ret;
 
+	rewind(fd_archive);
+	rewind(fd_toc);
+
 	// parse toc header and check for validity
 	ret = fread((void *) &toc_header, sizeof(struct WMN_TOC_HEADER), 1, fd_toc);
 	if ( ret != 1 || !(strncmp(toc_header.fourcc, "BLDh", 4) == 0) || !(strncmp(toc_header.def_section, "def ", 4) == 0) ) {
@@ -294,4 +297,10 @@ int wmn_extract(FILE *fd_archive, FILE *fd_toc) {
 	}
 
 	return 0;
+}
+
+int wmn_extract_audio(FILE *fd_archive, FILE *fd_toc) {
+	// audio files are stored uncompressed, since wmn_dat_inflate_file already can handle non zlib deflated files
+	// we can call wmn_extract directly
+	return wmn_extract(fd_archive, fd_toc);
 }

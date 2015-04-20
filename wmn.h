@@ -85,5 +85,6 @@ int wmn_dat_inflate_file(FILE *, struct WMN_DAT_CHUNK, struct WMN_TOC_DIR_ENTRY,
 int wmn_toc_parse_filenames(FILE *, struct WMN_TOC_HEADER, char **);
 int wmn_toc_parse_dir_entries(FILE *, FILE *, struct WMN_TOC_HEADER, char **);
 int wmn_extract(FILE *, FILE *);
+int wmn_extract_audio(FILE *, FILE *);
 
 #endif
