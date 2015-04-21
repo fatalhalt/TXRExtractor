@@ -2,10 +2,10 @@ Tokyo Xtreme Racer Extractor
 ============================
 
 TXRExtractor is an archive unpacker for GENKI Tokyo Xtreme Racer series games.
-Currently supported archive extraction include WMN.DAT from Wangan Midnight PS3.
+Currently supported archive extraction include WMN.DAT and AUDIO_PS3.DAT from Wangan Midnight PS3.
 
-Wangan Midnight uses zlib deflate chunks that inflate up to 256KB. See relevant
-header files for reverse engineered headers and their description.
+Wangan Midnight uses zlib deflate chunks that inflate up to 256KB and files are
+composed of them. See relevant header files for reverse engineered headers and their description.
 
 ## NOTES
 
@@ -14,7 +14,7 @@ You need to have copy of a game or archives to attempt to extract them.
 
 ## Status
 
-* Wangan Midnight 2007 PS3......................: WMN.DAT [ok], AUDIO_PS3.DAT [wip]
+* Wangan Midnight 2007 PS3......................: WMN.DAT [ok], AUDIO_PS3.DAT [ok]
 * Import Tuner Challenge 2006 Xbox 360...: [wip]
 
 ## Usage

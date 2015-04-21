@@ -1,0 +1,6 @@
+[dds2gtf.exe and gtf2dds.exe]
+- http://forum.xentax.com/viewtopic.php?p=54964#p54964
+- credits to ExeiL and JU57FL1P for coding up the GFT to DDS converter
+
+[maxscript]
+- thanks to mariokart64n for initial script http://forum.xentax.com/viewtopic.php?f=16&t=12775
