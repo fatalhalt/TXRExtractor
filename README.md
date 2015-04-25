@@ -35,4 +35,4 @@ The goal of the project is to be able to import 3d models of Shuto expressway in
 other environments such as GTA IV, rFactor 2, Assetto Corsa, or standalone game engine.
 
 
-![c1](https://github.com/fatalhalt/TXRExtractor/tree/master/img/c1.jpg?raw=true)
+![c1](https://raw.githubusercontent.com/fatalhalt/TXRExtractor/master/img/c1.jpg?raw=true)
