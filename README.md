@@ -17,6 +17,10 @@ You need to have copy of a game or archives to attempt to extract them.
 * Wangan Midnight 2007 PS3......................: WMN.DAT [ok], AUDIO_PS3.DAT [ok]
 * Import Tuner Challenge 2006 Xbox 360...: [wip]
 
+## XMD Models and XTD Textures
+
+Included is 3ds Max script that can load unpacked models and textures
+
 ## Usage
 
 From console:
@@ -28,4 +32,7 @@ From console:
 
 
 The goal of the project is to be able to import 3d models of Shuto expressway into
-other environments such as GTA IV or standalone game engine.
+other environments such as GTA IV, rFactor 2, Assetto Corsa, or standalone game engine.
+
+
+![c1](https://github.com/fatalhalt/TXRExtractor/tree/master/img/c1.jpg?raw=true)
