@@ -21,7 +21,12 @@ You need to have copy of a game or archives to attempt to extract them.
 
 Included is 3ds Max script that can load unpacked models and textures
 
-## Usage
+## GUI
+
+Simple Win32 GUI frontend is included, see "Releases" section of this github page
+![gui](https://raw.githubusercontent.com/fatalhalt/TXRExtractor/master/img/gui.jpg?raw=true)
+
+## Command Line Usage
 
 From console:
 
