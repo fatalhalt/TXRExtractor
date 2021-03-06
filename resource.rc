@@ -1,0 +1,23 @@
+#include "resource.h"
+
+ICO1 ICON DISCARDABLE "app.ico"
+
+IDC_MYAPP MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&Clear",               IDM_CLEAR
+        MENUITEM "E&xit",                IDM_EXIT
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About ...",           IDM_ABOUT
+    END
+END
+
+STRINGTABLE
+BEGIN
+  IDC_MYAPP "TXRExtractor"
+  IDS_MYAPP_TITLE "TXRExtractor"
+  IDS_MYAPP_ABOUT "Tokyo Xtreme Racer game archive unpacker v0.1\r\nhttps://github.com/fatalhalt/TXRExtractor"
+END

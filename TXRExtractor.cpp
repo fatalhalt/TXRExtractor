@@ -47,6 +47,7 @@ int txre_detect_archive(archive_unpack_f *f, FILE *fd_archive, FILE *fd_toc) {
 	return 1;
 }
 
+#ifndef TXREXTRACTOR_GUI_BUILD
 int main(int argc, char* argv[])
 {
 	archive_unpack_f archive_unpack = NULL;
@@ -88,4 +89,4 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
-
+#endif

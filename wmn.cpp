@@ -9,6 +9,12 @@
 #include <memory.h>
 #include <assert.h>
 
+#ifdef TXREXTRACTOR_GUI_BUILD
+  #define WIN32_LEAN_AND_MEAN
+  #include <windows.h>
+  extern HWND g_hWnd_tb4;  // output textfield for the GUI
+#endif
+
 // recusive mkdir, if traling dir has a dot it is assumed it's a file and is skipped
 int mkdirr(const char *path)
 {
@@ -244,6 +250,14 @@ int wmn_toc_parse_dir_entries(FILE *fd_archive, FILE *fd_toc, struct WMN_TOC_HEA
 
 			fwrite(file, file_sz, 1, fd_output);
 			printf("DUMPING %s\n", filenames[i]);
+#ifdef TXREXTRACTOR_GUI_BUILD
+            char str_buff[512];
+            sprintf(str_buff, "%s\n", filenames[i]);
+            int outputTextboxLength = 0;
+            outputTextboxLength = GetWindowTextLength(g_hWnd_tb4);
+            SendMessage(g_hWnd_tb4, EM_SETSEL, (WPARAM) outputTextboxLength, (LPARAM) outputTextboxLength);  // set selection to end of text
+            SendMessage(g_hWnd_tb4, EM_REPLACESEL, 0, (LPARAM) str_buff);
+#endif
 
 			fclose(fd_output);
 			free(file);
