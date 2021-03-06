@@ -6,6 +6,9 @@
 
 	C H A N G E    L O G
 
+	May 2015 to 2017?
+    - support generating assetto corsa .ini shader file for easier map import, 'assettoCorsaWriteConfig' variable must be set to 'true'
+	
 	April 21~25, 2015
 	- figured out how geometry and materials are linked, and how materials link to textures
 	- implemented creation of materials with hooked up diffuse, specular, reflection, and opacity maps
@@ -20,17 +23,29 @@
 
 
 	Original forum thread: http://forum.xentax.com/viewtopic.php?f=16&t=12775
+	
+	Notes;
+	- GTF textures, it appears that 00.GTF are normal maps, 01.GTF are diffuse, 02.GTF can be anything--opacity, specular, reflection, e.g. if material has only 1 bitmap
+	and it of 02.GTF it makes me conclude that it is a single opacity map meant to be alpha blended/test
+	- some materials point to 03.GTF but there's no such file, usually this is found on materials with _light_ name in it e.g. shuto tunnel has these materials
+	- geo_v_Xenon1 and alike is unknown geo, it has no material, it resembles outline of the roads, maybe used by game engine for car to stay on road in case geo doesn't load fast enough
+	- some geo with 2 bitmaps, where 1st is diffuse have the 2nd bitmap very dark, e.g. overhead hw signs, but also geo like road has 2nd texture similar to first but brighter--specular?
+	- geo such _BUIL_CUT_ contains many reflection maps, e.g. night time light reflections off of buildings
 
 */ ----------------------------------------------------------
 
-global f, g, PS3_WANGANM_IMPORTER, mscale = ((1.0/2.54)*100), m = #(), t = #(), currentFilen = "", offToXTDofCurrentXMD = 0, didPrepopulateT = false
-global impMsh = true, impSkl = false, dumpTex = true, DDSconv = true, guiEnabled = true, clearScene = false, debugMsg = false
-global handledTheseTextures = #()
+global f, g, PS3_WANGANM_IMPORTER, m = #(), t = #(), currentFilen = "", offToXTDofCurrentXMD = 0, didPrepopulateT = false
+global impMsh = true, impSkl = false, dumpTex = false, DDSconv = true, guiEnabled = false, clearScene = false, debugMsg = false
+global handledTheseTextures = #(), opacityBitmapList = #(), specularBitmapList = #(), reflectionBitmapList = #(), normalBitmapList = #(), noTextureMaterialList = #(), noMaterialList = #()
+global mscale = 1.0 --, mscale = ((1.0/2.54)*100)
+global printTextureStats = false, passAllTexturesAsDiffuse = false
+
+global assettoCorsaWriteConfig = true, acConfig, assettoCorsaConfigPath = "C:\\", assettoCorsaConfigFname = "map.fbx", acMatCount = 0
 
 struct _geometry (
 	position = #(), -- vertices
 	uv_coordinate = #(),
-	matid = 0, -- seems like each gemoetry has 1 material, matid seems to map to subheader's unk3 member
+	matid = 0, -- seems like each geometry has 1 material, matid seems to map to subheader's unk3 member
 	submatcount = #(), 
 	face = #()
 )
@@ -46,7 +61,7 @@ struct _material ( -- geometry should reference this somehow
 
 	--  tes_ren
 	--  use_light                 bool
-	--  shadow_map
+	--  shadow_map              bool?
 	--  reflect_map             bool?
 	--  EnableVertexColor    bool
 	--  mat_blend
@@ -64,7 +79,7 @@ struct _material ( -- geometry should reference this somehow
 	--  sys_zkeep               bool?
 	--  depth_type             bool?
 	
-	depth_type = 0, -- it seems that it's 1 when a texure is an opacity map
+	depth_type = 0, -- it seems that it's 1 when a texture is an opacity map
 	mat_bitmaps = #()
 )
 
@@ -133,14 +148,14 @@ fn getpadding num alignment = (
 fn paddstring len instring = (
 	local i, str = ""
 	instring = instring as string
-	if instring.count <=len then (
+	if instring.count <= len then (
 		for i = 1 to (len-instring.count) do (
 			str += "0"
 		)
 		str = (str+instring)
 	) else (
 		for i = 1 to len do (
-			str+="0";str[i]=instring[i]
+			str += "0"; str[i] = instring[i]
 		)
 	)
 	return str
@@ -162,6 +177,192 @@ fn readNullStr bstream = (
 		str += bit.intAsChar str0
 	)
 	str
+)
+
+
+fn assettoCorsaAlphaTestConfig matName texName = (
+	writestring acConfig (
+		"\r\n[MATERIAL_" + acMatCount as string + "]\r\n" +
+		"NAME=" + matName + "\r\n" +
+		"SHADER=ksPerPixel\r\n" +
+		"ALPHABLEND=0\r\n" +
+		"ALPHATEST=1\r\n" +
+		"DEPTHMODE=0\r\n" +
+		"VARCOUNT=6\r\n" +
+		"VAR_0_NAME=ksAmbient\r\n" +
+		"VAR_0_FLOAT1=0.5\r\n" +
+		"VAR_0_FLOAT2=0,0\r\n" +
+		"VAR_0_FLOAT3=0,0,0\r\n" +
+		"VAR_0_FLOAT4=0,0,0,0\r\n" +
+		"VAR_1_NAME=ksDiffuse\r\n" +
+		"VAR_1_FLOAT1=0.4\r\n" +
+		"VAR_1_FLOAT2=0,0\r\n" +
+		"VAR_1_FLOAT3=0,0,0\r\n" +
+		"VAR_1_FLOAT4=0,0,0,0\r\n" +
+		"VAR_2_NAME=ksSpecular\r\n" +
+		"VAR_2_FLOAT1=0.2\r\n" +
+		"VAR_2_FLOAT2=0,0\r\n" +
+		"VAR_2_FLOAT3=0,0,0\r\n" +
+		"VAR_2_FLOAT4=0,0,0,0\r\n" +
+		"VAR_3_NAME=ksSpecularEXP\r\n" +
+		"VAR_3_FLOAT1=30\r\n" +
+		"VAR_3_FLOAT2=0,0\r\n" +
+		"VAR_3_FLOAT3=0,0,0\r\n" +
+		"VAR_3_FLOAT4=0,0,0,0\r\n" +
+		"VAR_4_NAME=ksEmissive\r\n" +
+		"VAR_4_FLOAT1=0\r\n" +
+		"VAR_4_FLOAT2=0,0\r\n" +
+		"VAR_4_FLOAT3=0,0,0\r\n" +
+		"VAR_4_FLOAT4=0,0,0,0\r\n" +
+		"VAR_5_NAME=ksAlphaRef\r\n" +
+		"VAR_5_FLOAT1=0\r\n" +
+		"VAR_5_FLOAT2=0,0\r\n" +
+		"VAR_5_FLOAT3=0,0,0\r\n" +
+		"VAR_5_FLOAT4=0,0,0,0\r\n" +
+		"RESCOUNT=1\r\n" +
+		"RES_0_NAME=txDiffuse\r\n" +
+		"RES_0_SLOT=0\r\n" +
+		"RES_0_TEXTURE=" + texName + "\r\n"
+	)
+	
+	acMatCount += 1
+)
+
+fn assettoCorsaNormalMapConfig matName diftexName nrmlTexName = (
+	writestring acConfig (
+		"\r\n[MATERIAL_" + acMatCount as string + "]\r\n" +
+		"NAME=" + matName + "\r\n" +
+		"SHADER=ksPerPixelNM\r\n" +
+		"ALPHABLEND=0\r\n" +
+		"ALPHATEST=0\r\n" +
+		"DEPTHMODE=0\r\n" +
+		"VARCOUNT=12\r\n" +
+		"VAR_0_NAME=ksAmbient\r\n" +
+		"VAR_0_FLOAT1=0.5\r\n" +
+		"VAR_0_FLOAT2=0,0\r\n" +
+		"VAR_0_FLOAT3=0,0,0\r\n" +
+		"VAR_0_FLOAT4=0,0,0,0\r\n" +
+		"VAR_1_NAME=ksDiffuse\r\n" +
+		"VAR_1_FLOAT1=0.4\r\n" +
+		"VAR_1_FLOAT2=0,0\r\n" +
+		"VAR_1_FLOAT3=0,0,0\r\n" +
+		"VAR_1_FLOAT4=0,0,0,0\r\n" +
+		"VAR_2_NAME=ksSpecular\r\n" +
+		"VAR_2_FLOAT1=0.2\r\n" +
+		"VAR_2_FLOAT2=0,0\r\n" +
+		"VAR_2_FLOAT3=0,0,0\r\n" +
+		"VAR_2_FLOAT4=0,0,0,0\r\n" +
+		"VAR_3_NAME=ksSpecularEXP\r\n" +
+		"VAR_3_FLOAT1=30\r\n" +
+		"VAR_3_FLOAT2=0,0\r\n" +
+		"VAR_3_FLOAT3=0,0,0\r\n" +
+		"VAR_3_FLOAT4=0,0,0,0\r\n" +
+		"VAR_4_NAME=ksEmissive\r\n" +
+		"VAR_4_FLOAT1=0\r\n" +
+		"VAR_4_FLOAT2=0,0\r\n" +
+		"VAR_4_FLOAT3=0,0,0\r\n" +
+		"VAR_4_FLOAT4=0,0,0,0\r\n" +
+		"VAR_5_NAME=ksAlphaRef\r\n" +
+		"VAR_5_FLOAT1=0\r\n" +
+		"VAR_5_FLOAT2=0,0\r\n" +
+		"VAR_5_FLOAT3=0,0,0\r\n" +
+		"VAR_5_FLOAT4=0,0,0,0\r\n" +
+		"VAR_6_NAME=fresnelC\r\n" +
+		"VAR_6_FLOAT1=0\r\n" +
+		"VAR_6_FLOAT2=0,0\r\n" +
+		"VAR_6_FLOAT3=0,0,0\r\n" +
+		"VAR_6_FLOAT4=0,0,0,0\r\n" +
+		"VAR_7_NAME=fresnelEXP\r\n" +
+		"VAR_7_FLOAT1=0\r\n" +
+		"VAR_7_FLOAT2=0,0\r\n" +
+		"VAR_7_FLOAT3=0,0,0\r\n" +
+		"VAR_7_FLOAT4=0,0,0,0\r\n" +
+		"VAR_8_NAME=nmObjectSpace\r\n" +
+		"VAR_8_FLOAT1=0\r\n" +
+		"VAR_8_FLOAT2=0,0\r\n" +
+		"VAR_8_FLOAT3=0,0,0\r\n" +
+		"VAR_8_FLOAT4=0,0,0,0\r\n" +
+		"VAR_9_NAME=isAdditive\r\n" +
+		"VAR_9_FLOAT1=0\r\n" +
+		"VAR_9_FLOAT2=0,0\r\n" +
+		"VAR_9_FLOAT3=0,0,0\r\n" +
+		"VAR_9_FLOAT4=0,0,0,0\r\n" +
+		"VAR_10_NAME=fresnelMaxLevel\r\n" +
+		"VAR_10_FLOAT1=0\r\n" +
+		"VAR_10_FLOAT2=0,0\r\n" +
+		"VAR_10_FLOAT3=0,0,0\r\n" +
+		"VAR_10_FLOAT4=0,0,0,0\r\n" +
+		"VAR_11_NAME=boh\r\n" +
+		"VAR_11_FLOAT1=0\r\n" +
+		"VAR_11_FLOAT2=0,0\r\n" +
+		"VAR_11_FLOAT3=0,0,0\r\n" +
+		"VAR_11_FLOAT4=0,0,0,0\r\n" +
+		"RESCOUNT=2\r\n" +
+		"RES_0_NAME=txDiffuse\r\n" +
+		"RES_0_SLOT=0\r\n" +
+		"RES_0_TEXTURE=" + diftexName + "\r\n" +
+		"RES_1_NAME=txNormal\r\n" +
+		"RES_1_SLOT=1\r\n" +
+		"RES_1_TEXTURE=" + nrmlTexName + "\r\n"
+	)
+	
+	acMatCount += 1
+)
+
+fn assettoCorsaDiffuseMapConfig matName diftexName = (
+	writestring acConfig (
+		"\r\n[MATERIAL_" + acMatCount as string + "]\r\n" +
+		"NAME=" + matName + "\r\n" +
+		"SHADER=ksPerPixel\r\n" +
+		"ALPHABLEND=0\r\n" +
+		"ALPHATEST=0\r\n" +
+		"DEPTHMODE=0\r\n" +
+		"VARCOUNT=6\r\n" +
+		"VAR_0_NAME=ksAmbient\r\n" +
+		"VAR_0_FLOAT1=0.5\r\n" +
+		"VAR_0_FLOAT2=0,0\r\n" +
+		"VAR_0_FLOAT3=0,0,0\r\n" +
+		"VAR_0_FLOAT4=0,0,0,0\r\n" +
+		"VAR_1_NAME=ksDiffuse\r\n" +
+		"VAR_1_FLOAT1=0.4\r\n" +
+		"VAR_1_FLOAT2=0,0\r\n" +
+		"VAR_1_FLOAT3=0,0,0\r\n" +
+		"VAR_1_FLOAT4=0,0,0,0\r\n" +
+		"VAR_2_NAME=ksSpecular\r\n" +
+		"VAR_2_FLOAT1=0.2\r\n" +
+		"VAR_2_FLOAT2=0,0\r\n" +
+		"VAR_2_FLOAT3=0,0,0\r\n" +
+		"VAR_2_FLOAT4=0,0,0,0\r\n" +
+		"VAR_3_NAME=ksSpecularEXP\r\n" +
+		"VAR_3_FLOAT1=30\r\n" +
+		"VAR_3_FLOAT2=0,0\r\n" +
+		"VAR_3_FLOAT3=0,0,0\r\n" +
+		"VAR_3_FLOAT4=0,0,0,0\r\n" +
+		"VAR_4_NAME=ksEmissive\r\n" +
+		"VAR_4_FLOAT1=0\r\n" +
+		"VAR_4_FLOAT2=0,0\r\n" +
+		"VAR_4_FLOAT3=0,0,0\r\n" +
+		"VAR_4_FLOAT4=0,0,0,0\r\n" +
+		"VAR_5_NAME=ksAlphaRef\r\n" +
+		"VAR_5_FLOAT1=0\r\n" +
+		"VAR_5_FLOAT2=0,0\r\n" +
+		"VAR_5_FLOAT3=0,0,0\r\n" +
+		"VAR_5_FLOAT4=0,0,0,0\r\n" +
+		"RESCOUNT=1\r\n" +
+		"RES_0_NAME=txDiffuse\r\n" +
+		"RES_0_SLOT=0\r\n" +
+		"RES_0_TEXTURE=" + diftexName + "\r\n"
+	)
+	
+	acMatCount += 1
+)
+
+fn assettoCorsaConfigClose = (
+	--fflush acConfig
+	--fseek acConfig 0 #seek_set
+	writestring acConfig ("\r\n[HEADER]\r\nVERSION=3\r\n\r\n[MATERIAL_LIST]\r\nCOUNT=" + acMatCount as string + "\r\n")
+
+	fclose acConfig
 )
 
 fn getTXD_header = (
@@ -220,7 +421,7 @@ fn triangle_strip fstream count matid = (
 
 fn buildObj objname strArray = (
 	global f, g, m, t, offToXTDofCurrentXMD, getTXD, didPrepopulateT
-	local j, msh --,mats = copy g.matcount #nomap
+	local j, prevTexName, msh --,mats = copy g.matcount #nomap
 -- 	local faceValid = true
 -- 	j = 1; while j < g.face.count and faceValid == true do (
 -- 		if g.face[j][1] > g.position.count or g.face[j][1] < 0 do faceValid = false
@@ -252,7 +453,7 @@ fn buildObj objname strArray = (
 		if debugMsg == true do (format "\tbuildObj(): m count: %, t count: %, mesh matid: %\n" m.count t.count (g.matid+1))
 
 
-		if m.count > 0 and g.matid < m.count do ( -- some geometry like e.g. "ufj_01.component[5]" has no material, FIXME: some meshes have matid beyond m array!?
+		if m.count > 0 and g.matid < m.count then ( -- some geometry like e.g. "ufj_01.component[5]" has no material, FIXME: some meshes have matid beyond m array!?
 			-- create material
 			mat_name = strArray[m[g.matid+1].mat_str_index]
 			matr = standardmaterial name:mat_name
@@ -263,59 +464,122 @@ fn buildObj objname strArray = (
 			bitmap_count = m[g.matid+1].mat_bitmaps.count
 			assert (bitmap_count <= 3) message: "m has more than 3 textures!" options:#(#dialog)
 
-			if bitmap_count > 0 do ( -- code below will create components such as diffuse, specular, or normal map for given material
+			if bitmap_count > 0 then ( -- code below will create components such as diffuse, specular, or normal map for given material
 				for k = 1 to bitmap_count do (
 					mat_index_to_tx = m[g.matid+1].mat_bitmaps[k].index
 					mat_tx_name = t[mat_index_to_tx+1].texname
 					mat_tx_path = t[mat_index_to_tx+1].tex_path
 					if debugMsg == true do (format "\ttexname %: %, texpath: %\n"  k mat_tx_name mat_tx_path)
 					
-					if findString mat_tx_name "file0" != undefined do ( -- diffuse or opacity
-						case m[g.matid+1].depth_type of (
-						0x01: ( -- FIXME: there are some false positves, some textures come out to have opacity when they shouldn't have
+					if passAllTexturesAsDiffuse == false then (
+						-- FIXME: seriously, turn below multiple if statements info if else
+						if findString mat_tx_name "file0" != undefined do ( -- diffuse or opacity
+							if m[g.matid+1].depth_type == 0x01 and bitmap_count == 1 then ( -- i assume material with 1 bitmap here is opacity
+								-- FIXME: there are some false positves, some textures come out to have opacity when they shouldn't have
 								matr.opacityMap = bitmaptexture name:mat_tx_name
 								append handledTheseTextures mat_tx_name
 								matr.opacityMap.filename = mat_tx_path
-							)
-						default: (
+								append opacityBitmapList (objname + ": " + mat_name + " -- " + mat_tx_name + " texture")
+							
+								if bitmap_count == 1 and assettoCorsaWriteConfig == true do (
+									assettoCorsaAlphaTestConfig mat_name ((getFilenameFile mat_tx_path) + ".dds")
+								)
+							
+								prevTexName = mat_tx_path
+								continue
+							) else (
 								matr.diffusemap = bitmaptexture name:mat_tx_name
 								append handledTheseTextures mat_tx_name
 								matr.diffusemap.filename = mat_tx_path
 								--showtexturemap matr matr.diffusemap true
+
+								if bitmap_count == 1 and assettoCorsaWriteConfig == true do (
+									assettoCorsaDiffuseMapConfig mat_name ((getFilenameFile mat_tx_path) + ".dds")
+								)
+							
+								prevTexName = mat_tx_path
+								continue
 							)
 						)
-					)
-					
-					if findString mat_tx_name "file1" != undefined do ( -- specular??? everytime i checked this texture it looked same as diffuse but more shiny
-						matr.specularMap = bitmaptexture name:mat_tx_name -- specular maps are used mostly on metal objects?
-						append handledTheseTextures mat_tx_name
-						matr.specularMap.filename = mat_tx_path
-						--showtexturemap matr matr.specularMap true -- this will unshow diffuse channel, hmm, maybe that's how 3ds works, specular will get shown during rendering
-					)
-					
-					if findString mat_tx_name "reffile" != undefined do ( -- reflection map?
-						matr.reflectionMap = bitmaptexture name:mat_tx_name
-						append handledTheseTextures mat_tx_name
-						matr.reflectionMap.filename = mat_tx_path
-					)
+						
+						if findString mat_tx_name "reffile" != undefined do ( -- reflection map?
+							matr.reflectionMap = bitmaptexture name:mat_tx_name
+							append handledTheseTextures mat_tx_name
+							matr.reflectionMap.filename = mat_tx_path
+							append reflectionBitmapList (objname + ": " + mat_name + " -- " + mat_tx_name + " texture")
 
-					if findString mat_tx_name "nrmfile" != undefined do ( -- normal map
-						normalmap_bitmap = bitmaptexture name:mat_tx_name
+							if bitmap_count == 2 and k == 2 and assettoCorsaWriteConfig == true do (
+								assettoCorsaDiffuseMapConfig mat_name ((getFilenameFile prevTexName) + ".dds")
+							)
+
+							prevTexName = mat_tx_path
+							continue
+						)
+
+						if findString mat_tx_name "nrmfile" != undefined do ( -- normal map
+							normalmap_bitmap = bitmaptexture name:mat_tx_name
+							append handledTheseTextures mat_tx_name
+							normalmap_bitmap.filename = mat_tx_path
+							normalmap = Normal_Bump name:mat_tx_name
+							normalmap.normal_map = normalmap_bitmap
+							matr.bumpMap = normalmap
+							append normalBitmapList (objname + ": " + mat_name + " -- " + mat_tx_name + " texture")
+							--showtexturemap matr matr.bumpMap true -- actually there's no such thing for bump
+							
+							if bitmap_count == 2 and assettoCorsaWriteConfig == true and k == 2 do ( -- pretty good guess, we have 2 texures, 1st is diffuse and 2nd normal?
+								assettoCorsaNormalMapConfig mat_name ((getFilenameFile prevTexName) + ".dds") ((getFilenameFile mat_tx_path) + ".dds") -- hopefully prevTexName was the name of diffuse texture or we're fucked
+							)
+
+							prevTexName = mat_tx_path
+							continue
+						)
+						
+						-- the more i looked it seems this is some misc specialty/extra texture
+						if findString mat_tx_name "file1" != undefined do ( -- specular??? everytime i checked this texture it looked same as diffuse but more shiny
+							matr.specularMap = bitmaptexture name:mat_tx_name -- specular maps are used mostly on metal objects?
+							append handledTheseTextures mat_tx_name
+							matr.specularMap.filename = mat_tx_path
+							append specularBitmapList (objname + ": " + mat_name + " -- " + mat_tx_name + " texture")
+							--showtexturemap matr matr.specularMap true -- this will unshow diffuse channel, hmm, maybe that's how 3ds works, specular will get shown during rendering
+							
+							-- added this to catch cases such as shuto overhead signs, at this point we know 2nd tex is not nrm or ref, the latter or statement hopefully catches the buildings
+							if ((bitmap_count == 2 and k == 2 and assettoCorsaWriteConfig == true) or (bitmap_count == 3 and k == 2 and assettoCorsaWriteConfig == true)) do (
+								assettoCorsaDiffuseMapConfig mat_name ((getFilenameFile prevTexName) + ".dds")
+							)
+							
+							prevTexName = mat_tx_path
+							continue
+						)
+						
+						-- if we get here we'll just use diffuse
+						matr.diffusemap = bitmaptexture name:mat_tx_name
 						append handledTheseTextures mat_tx_name
-						normalmap_bitmap.filename = mat_tx_path
-						normalmap = Normal_Bump name:mat_tx_name
-						normalmap.normal_map = normalmap_bitmap
-						matr.bumpMap = normalmap
-						--showtexturemap matr matr.bumpMap true -- actually there's no such thing for bump
+						matr.diffusemap.filename = mat_tx_path
+
+					) else ( -- make all textures as diffuse
+						if k == 1 do (
+							matr.diffusemap = bitmaptexture name:mat_tx_name
+							append handledTheseTextures mat_tx_name
+							matr.diffusemap.filename = mat_tx_path
+
+							if bitmap_count == 1 and assettoCorsaWriteConfig == true do (
+								assettoCorsaDiffuseMapConfig mat_name ((getFilenameFile mat_tx_path) + ".dds")
+							)
+							prevTexName = mat_tx_path
+						)
 					)
 					
 					-- FIXME: there are some texture names like gt_sky* or *file2, *file2b, *file3 *file4...
 				)
+			) else ( -- material has no texure
+				append noTextureMaterialList mat_name
 			)
 
 			-- done
 			showTextureMap matr true
 			msh.material = matr
+		) else ( -- geometry with no material, pain in butt?
+			append noMaterialList objname
 		)
 		
 		convertTo msh PolyMeshObject
@@ -966,7 +1230,7 @@ fn readBinary filen = (
 				)
 			)
 
-			if debugMsg == true do (
+			if printTextureStats == true do (
 				format "\nall parsed texture names, count: %\n" t.count
 				for i = 1 to t.count do (
 					format "%:\t%\n" i t[i].texname
@@ -977,6 +1241,42 @@ fn readBinary filen = (
 					format "%:\t%\n" i handledTheseTextures[i]
 				)
 				free handledTheseTextures
+				
+				format "\nOPACITY TEXTURES, count: %\n" opacityBitmapList.count
+				for i = 1 to opacityBitmapList.count do (
+					format "%:\t%\n" i opacityBitmapList[i]
+				)
+				free opacityBitmapList
+				
+				format "\nSPECULAR TEXTURES, count: %\n" specularBitmapList.count
+				for i = 1 to specularBitmapList.count do (
+					format "%:\t%\n" i specularBitmapList[i]
+				)
+				free specularBitmapList
+				
+				format "\nREFLECTION TEXTURES, count: %\n" reflectionBitmapList.count
+				for i = 1 to reflectionBitmapList.count do (
+					format "%:\t%\n" i reflectionBitmapList[i]
+				)
+				free reflectionBitmapList
+				
+				format "\nNORMAL TEXTURES, count: %\n" normalBitmapList.count
+				for i = 1 to normalBitmapList.count do (
+					format "%:\t%\n" i normalBitmapList[i]
+				)
+				free normalBitmapList
+				
+				format "\nMATERIALS WITH NO TEXTURES, count: %\n" noTextureMaterialList.count
+				for i = 1 to noTextureMaterialList.count do (
+					format "%:\t%\n" i noTextureMaterialList[i]
+				)
+				free noTextureMaterialList
+				
+				format "\nGEOMETRY WITH NO MATERIAL, count: %\n" noMaterialList.count
+				for i = 1 to noMaterialList.count do (
+					format "%:\t%\n" i noMaterialList[i]
+				)
+				free noMaterialList
 			)
 		)
 		0x00445458: ( -- XTD (Xtreme Texture Data)
@@ -1053,12 +1353,137 @@ fn wanganMidnightLoadC1 parentDir = (
 	)
 )
 
+fn wanganMidnightLoad911GO parentDir = (
+	filenames = stringstream ""
+	-- 9GO
+	buildFilePaths filenames (parentDir + "AREA_9GO_BUIL_CUT_9GO_FREE") 0 11
+	buildFilePaths filenames (parentDir + "AREA_9GO_BUIL_CUT_9GO_FUKA") 0 6
+	buildFilePaths filenames (parentDir + "AREA_9GO_ROAD_MDL") 0 29
+	-- 11GO
+	buildFilePaths filenames (parentDir + "AREA_11GO_BUIL_CUT_11GO_DAI") 0 2
+	buildFilePaths filenames (parentDir + "AREA_11GO_BUIL_CUT_11GO_FREE") 0 8
+	buildFilePaths filenames (parentDir + "AREA_11GO_BUIL_CUT_11GO_WAN") 0 13
+	buildFilePaths filenames (parentDir + "AREA_11GO_ROAD_MDL") 0 54
+
+	seek filenames 0
+	while eof filenames == false do (
+		filen = readLine filenames
+		openFilen(filen)
+	)
+)
+
+fn wanganMidnightLoad9GO parentDir = (
+	filenames = stringstream ""
+	-- 9GO
+	buildFilePaths filenames (parentDir + "AREA_9GO_BUIL_CUT_9GO_FREE") 0 11
+	buildFilePaths filenames (parentDir + "AREA_9GO_BUIL_CUT_9GO_FUKA") 0 6
+	buildFilePaths filenames (parentDir + "AREA_9GO_ROAD_MDL") 0 29
+
+	seek filenames 0
+	while eof filenames == false do (
+		filen = readLine filenames
+		openFilen(filen)
+	)
+)
+
+fn wanganMidnightLoad11GO parentDir = (
+	filenames = stringstream ""
+	-- 11GO
+	buildFilePaths filenames (parentDir + "AREA_11GO_BUIL_CUT_11GO_DAI") 0 2
+	buildFilePaths filenames (parentDir + "AREA_11GO_BUIL_CUT_11GO_FREE") 0 8
+	buildFilePaths filenames (parentDir + "AREA_11GO_BUIL_CUT_11GO_WAN") 0 13
+	buildFilePaths filenames (parentDir + "AREA_11GO_ROAD_MDL") 0 54
+
+	seek filenames 0
+	while eof filenames == false do (
+		filen = readLine filenames
+		openFilen(filen)
+	)
+)
+
+fn wanganMidnightLoadWangan parentDir = (
+	filenames = stringstream ""
+
+	buildFilePaths filenames (parentDir + "AREA_WN_I1_BUIL_CUT_I1_FREE") 0 3
+	buildFilePaths filenames (parentDir + "AREA_WN_I1_ROAD_MDL") 0 17
+	buildFilePaths filenames (parentDir + "AREA_WN_I2_BUIL_CUT_I2") 0 7
+	buildFilePaths filenames (parentDir + "AREA_WN_I2_BUIL_CUT_I2_FREE") 0 3
+	buildFilePaths filenames (parentDir + "AREA_WN_I2_ROAD_MDL") 0 13
+	buildFilePaths filenames (parentDir + "AREA_WN_I3_BUIL_CUT_I3_FREE") 0 2
+	buildFilePaths filenames (parentDir + "AREA_WN_I3_ROAD_MDL") 0 12
+	buildFilePaths filenames (parentDir + "AREA_WN_J1_BUIL_CUT_J1_FREE") 0 3
+	buildFilePaths filenames (parentDir + "AREA_WN_J1_ROAD_MDL") 0 8
+	buildFilePaths filenames (parentDir + "AREA_WN_J2_BUIL_CUT_J2_FREE") 0 2
+	buildFilePaths filenames (parentDir + "AREA_WN_J2_ROAD_MDL") 0 24
+	buildFilePaths filenames (parentDir + "AREA_WN_K1_BUIL_CUT_K1_A") 0 14
+	buildFilePaths filenames (parentDir + "AREA_WN_K1_BUIL_CUT_K1_B") 0 10
+	buildFilePaths filenames (parentDir + "AREA_WN_K1_BUIL_CUT_K1_FREE") 0 19
+	buildFilePaths filenames (parentDir + "AREA_WN_K1_ROAD_MDL") 0 39
+	buildFilePaths filenames (parentDir + "AREA_WN_K2_BUIL_CUT_K2_FREE") 0 15
+	buildFilePaths filenames (parentDir + "AREA_WN_K2_ROAD_MDL") 0 17
+
+	seek filenames 0
+	while eof filenames == false do (
+		filen = readLine filenames
+		openFilen(filen)
+	)
+	
+	openFilen "C:\\NIGHT\\AREA_WN_J1_BUIL_J1_RYOK.GRID"
+)
+
+fn wanganMidnightLoadYokohane parentDir = (
+	filenames = stringstream ""
+
+	buildFilePaths filenames (parentDir + "AREA_YH_L0_BUIL_CUT_L0_DAIK_A") 0 8
+	buildFilePaths filenames (parentDir + "AREA_YH_L0_BUIL_CUT_L0_DAIK_B") 0 7
+	buildFilePaths filenames (parentDir + "AREA_YH_L0_BUIL_CUT_L0_FREE") 0 17
+	buildFilePaths filenames (parentDir + "AREA_YH_L0_BUIL_CUT_L0_YH") 0 13
+	buildFilePaths filenames (parentDir + "AREA_YH_L0_ROAD_MDL") 0 10
+	buildFilePaths filenames (parentDir + "AREA_YH_L1_BUIL_CUT_L1") 0 31
+	buildFilePaths filenames (parentDir + "AREA_YH_L1_BUIL_CUT_L1_FREE") 0 8
+	buildFilePaths filenames (parentDir + "AREA_YH_L1_ROAD_MDL") 0 9
+	buildFilePaths filenames (parentDir + "AREA_YH_L2_BUIL_CUT_L2") 0 21
+	buildFilePaths filenames (parentDir + "AREA_YH_L2_BUIL_CUT_L2_FREE") 0 3
+	buildFilePaths filenames (parentDir + "AREA_YH_L2_ROAD_MDL") 0 10
+	buildFilePaths filenames (parentDir + "AREA_YH_L3_BUIL_CUT_L3") 0 15
+	buildFilePaths filenames (parentDir + "AREA_YH_L3_BUIL_CUT_L3_FREE") 0 9
+	buildFilePaths filenames (parentDir + "AREA_YH_L3_ROAD_MDL") 0 10
+	buildFilePaths filenames (parentDir + "AREA_YH_M1_BUIL_CUT_M1") 0 9
+	buildFilePaths filenames (parentDir + "AREA_YH_M1_BUIL_CUT_M1_FREE") 0 6
+	buildFilePaths filenames (parentDir + "AREA_YH_M1_ROAD_MDL") 0 15
+	buildFilePaths filenames (parentDir + "AREA_YH_M2_BUIL_CUT_M2") 0 18
+	buildFilePaths filenames (parentDir + "AREA_YH_M2_BUIL_CUT_M2_FREE") 0 7
+	buildFilePaths filenames (parentDir + "AREA_YH_M2_ROAD_MDL") 0 18
+
+	seek filenames 0
+	while eof filenames == false do (
+		filen = readLine filenames
+		openFilen(filen)
+	)
+)
+
 -- code execution starts here, first we clear listener window
---clearlistener()
+clearlistener()
 
 -- globals below are freely accessible
+if assettoCorsaWriteConfig == true do (
+	configFname = assettoCorsaConfigPath + assettoCorsaConfigFname + ".ini"
+	try (fclose acConfig) catch(gc())
+	acConfig = fopen configFname "w"
+	--format "failed to open %.ini for writing\n" assettoCorsaConfigFname
+)
+
 if guiEnabled == false then (
-	local filen = ""
+	--local filen = ""; openFilen(filen)
+	openFilen "C:\\NIGHT\\AREA_ZZ.CORE"
+	openFilen "C:\\NIGHT\\AREA_ZZ.WATER"
+	
+	wanganMidnightLoadC1 "C:\\NIGHT\\"
+	--wanganMidnightLoad911GO "C:\\NIGHT\\"
+	--wanganMidnightLoadWangan "C:\\NIGHT\\"
+	--wanganMidnightLoadYokohane "C:\\NIGHT\\"
+	
+	if assettoCorsaWriteConfig == true do ( assettoCorsaConfigClose() )
 	--
 ) else (
 	try (destroydialog PS3_WANGANM_IMPORTER) catch()
@@ -1107,6 +1532,9 @@ if guiEnabled == false then (
 			if openFilen(filen_) == true do (
 				messagebox "Done!"
 			)
+		)
+		on PS3_WANGANM_IMPORTER close do (
+			if assettoCorsaWriteConfig == true do ( assettoCorsaConfigClose() )
 		)
 	)
 	createdialog PS3_WANGANM_IMPORTER
